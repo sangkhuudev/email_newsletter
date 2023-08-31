@@ -17,11 +17,14 @@ actix-web ="4.4.0"
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"]}
 serde = {version = "1.0.188", features = ["derive"]}
 config = "0.11"
+uuid = { version = "1.4.1", features = ["v4"] }
+chrono = "0.4.15"
+
 [dev-dependencies]
 reqwest = "0.11.20"
 
 [dependencies.sqlx]
-version = "0.5.7"
+version = "0.6.2"
 default-features = false
 features = [
     "runtime-actix-rustls",
