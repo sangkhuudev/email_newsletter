@@ -1,7 +1,7 @@
-name: email_newsletter
+name: email-newsletter
 region: fra
 services:
-  - name: email_newsletter
+  - name: email-newsletter
     dockerfile_path: Dockerfile
     source_dir: .
     github:
@@ -15,20 +15,19 @@ services:
     instance_size_slug: basic-xxs
     routes:
       - path: /
-
 #     envs:
 #       - key: APP_DATABASE__USERNAME
 #         scope: RUN_TIME
 #         value: ${newsletter.USERNAME}
 #       - key: APP_DATABASE__PASSWORD
 #         scope: RUN_TIME
-#         value: ${newsletter.PASSWORD}    
+#         value: ${newsletter.PASSWORD}
 #       - key: APP_DATABASE__HOST
 #         scope: RUN_TIME
 #         value: ${newsletter.HOSTNAME}
 #       - key: APP_DATABASE__PORT
 #         scope: RUN_TIME
-#         value: ${newsletter.PORT}  
+#         value: ${newsletter.PORT}
 #       - key: APP_DATABASE__DATABASE_NAME
 #         scope: RUN_TIME
 #         value: ${newsletter.DATABASE}
@@ -37,4 +36,4 @@ services:
 #     name: newsletter
 #     num_nodes: 1
 #     size: db-s-dev-database
-#     version: "15"          
+#     version: "15"
