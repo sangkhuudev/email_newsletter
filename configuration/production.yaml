@@ -4,7 +4,7 @@ database:
   require_ssl: true
 
 email_client:
-  # Value retrieved from Mailchimp's API documentation
+  # Value retrieved from Postmark's API documentation
   base_url: "https://api.postmarkapp.com"
-  # Use the single sender email you authorised on Mailchimp!
+  # Use the single sender email you authorised on Postmark!
   sender_email: "sangkhuu@rustdev.online"  
