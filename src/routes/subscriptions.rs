@@ -130,15 +130,20 @@ pub async fn store_token(
     subscriber_id: Uuid,
     subscription_token: &str,
 ) -> Result<(), StoreTokenError> {
-    let query = sqlx::query!(
+    sqlx::query!(
         r#"
     INSERT INTO subscription_tokens (subscription_token, subscriber_id)
     VALUES ($1, $2)
         "#,
         subscription_token,
         subscriber_id
-    );
-    transaction.execute(query).await.map_err(StoreTokenError)?;
+    )
+    .execute(transaction)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to execute query: {:?}", e);
+        StoreTokenError(e)
+    })?;
     Ok(())
 }
 //----------------------------------------------------------------
@@ -177,7 +182,7 @@ impl TryFrom<FormData> for NewSubscriber {
     fn try_from(value: FormData) -> Result<Self, Self::Error> {
         let name = SubscriberName::parse(value.name)?;
         let email = SubscriberEmail::parse(value.email)?;
-        Ok(NewSubscriber { email, name })
+        Ok(Self { email, name })
     }
 }
 
@@ -190,17 +195,22 @@ pub async fn insert_subscriber(
     transaction: &mut Transaction<'_, Postgres>,
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
-    let query = sqlx::query!(
+    sqlx::query!(
         r#"
-        INSERT INTO subscriptions (id, email, name, subscribed_at, status)
-        VALUES ($1, $2, $3, $4, 'pending_confirmation')
-        "#,
+    INSERT INTO subscriptions (id, email, name, subscribed_at, status)
+    VALUES ($1, $2, $3, $4, 'pending_confirmation')
+            "#,
         subscriber_id,
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
-    );
-    transaction.execute(query).await?;
+    )
+    .execute(transaction)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed with insert subscriber function: {:?}", e);
+        e
+    })?;
     Ok(subscriber_id)
 }
 
