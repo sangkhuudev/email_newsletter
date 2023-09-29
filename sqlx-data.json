@@ -59,5 +59,49 @@
       }
     },
     "query": "SELECT subscriber_id FROM subscription_tokens WHERE subscription_token = $1"
+  },
+  "ae241d2b133bbdbfbd8e1fa4b4c6bd473e8dc5c8a1eaa99a399ab157b94635c3": {
+    "describe": {
+      "columns": [
+        {
+          "name": "user_id",
+          "ordinal": 0,
+          "type_info": "Uuid"
+        },
+        {
+          "name": "password_hash",
+          "ordinal": 1,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT user_id, password_hash\n        FROM users\n        WHERE username = $1 \n        "
+  },
+  "f01b4f4e1ab749114383d32d06dfdcc94aa8a5546d8be7063485897390dc1b17": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email",
+          "ordinal": 0,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "SELECT email FROM subscriptions\n            WHERE status = 'confirmed'\n        "
   }
 }

@@ -2,7 +2,7 @@ use crate::domain::SubscriberEmail;
 use reqwest::Client;
 use secrecy::{ExposeSecret, Secret};
 use serde::Serialize;
-#[derive(Clone)]
+
 pub struct EmailClient {
     http_client: Client,
     base_url: String,
@@ -40,7 +40,7 @@ impl EmailClient {
     }
     pub async fn send_email(
         &self,
-        recipient: SubscriberEmail,
+        recipient: &SubscriberEmail,
         subject: &str,
         html_content: &str,
         text_content: &str,
@@ -136,7 +136,7 @@ mod tests {
             .await;
 
         let _ = email_client
-            .send_email(email(), &subject(), &content(), &content())
+            .send_email(&email(), &subject(), &content(), &content())
             .await;
     }
 
@@ -153,7 +153,7 @@ mod tests {
             .await;
 
         let res = email_client
-            .send_email(email(), &subject(), &content(), &content())
+            .send_email(&email(), &subject(), &content(), &content())
             .await;
         assert_ok!(res);
     }
@@ -171,7 +171,7 @@ mod tests {
             .await;
 
         let res = email_client
-            .send_email(email(), &subject(), &content(), &content())
+            .send_email(&email(), &subject(), &content(), &content())
             .await;
         assert_err!(res);
     }
@@ -190,7 +190,7 @@ mod tests {
             .await;
 
         let res = email_client
-            .send_email(email(), &subject(), &content(), &content())
+            .send_email(&email(), &subject(), &content(), &content())
             .await;
         assert_err!(res);
     }

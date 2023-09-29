@@ -60,7 +60,7 @@ pub async fn subscribe(
         .begin()
         .await
         .context("Failed to acquire a Postgres connection from the pool")?;
-    let subscriber_id = insert_subscriber(&new_subscriber, &mut transaction)
+    let subscriber_id = insert_subscriber(&mut transaction, &new_subscriber)
         .await
         .context("Failed to insert new subscriber in the database.")?;
 
@@ -130,20 +130,18 @@ pub async fn store_token(
     subscriber_id: Uuid,
     subscription_token: &str,
 ) -> Result<(), StoreTokenError> {
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"
     INSERT INTO subscription_tokens (subscription_token, subscriber_id)
     VALUES ($1, $2)
         "#,
         subscription_token,
         subscriber_id
-    )
-    .execute(transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        StoreTokenError(e)
-    })?;
+    );
+
+    // Execute the query within the transaction
+    transaction.execute(query).await.map_err(StoreTokenError)?;
+
     Ok(())
 }
 //----------------------------------------------------------------
@@ -172,7 +170,7 @@ pub async fn send_confirmation_email(
         confirmation_link
     );
     email_client
-        .send_email(new_subscriber.email, "Welcome", &html_body, &plain_body)
+        .send_email(&new_subscriber.email, "Welcome", &html_body, &plain_body)
         .await
 }
 
@@ -191,11 +189,11 @@ impl TryFrom<FormData> for NewSubscriber {
     skip(new_subscriber, transaction)
 )]
 pub async fn insert_subscriber(
-    new_subscriber: &NewSubscriber,
     transaction: &mut Transaction<'_, Postgres>,
+    new_subscriber: &NewSubscriber,
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
-    sqlx::query!(
+    let query = sqlx::query!(
         r#"
     INSERT INTO subscriptions (id, email, name, subscribed_at, status)
     VALUES ($1, $2, $3, $4, 'pending_confirmation')
@@ -204,13 +202,11 @@ pub async fn insert_subscriber(
         new_subscriber.email.as_ref(),
         new_subscriber.name.as_ref(),
         Utc::now()
-    )
-    .execute(transaction)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed with insert subscriber function: {:?}", e);
-        e
-    })?;
+    );
+
+    // Execute the query within the transaction
+    transaction.execute(query).await?;
+
     Ok(subscriber_id)
 }
 

@@ -1,20 +1,20 @@
-use email_newsletter::startup::{get_connection_pool};
-use email_newsletter::telemetry::{get_subscriber, init_subscriber};
+use argon2::password_hash::SaltString;
+use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
 use email_newsletter::configuration::{get_configuration, DatabaseSettings};
+use email_newsletter::startup::{get_connection_pool, Application};
+use email_newsletter::telemetry::{get_subscriber, init_subscriber};
+use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
-use once_cell::sync::Lazy;
-use email_newsletter::startup::Application;
 use wiremock::MockServer;
-
 //----------------------------------------------------------------
 pub struct TestApp {
     pub address: String,
     pub db_pool: PgPool,
     pub email_server: MockServer,
     pub port: u16,
+    pub test_user: TestUser,
 }
-
 
 pub struct ConfirmationLinks {
     pub html: reqwest::Url,
@@ -24,12 +24,22 @@ pub struct ConfirmationLinks {
 impl TestApp {
     pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
         reqwest::Client::new()
-        .post(&format!("{}/subscriptions", &self.address))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
-        .await
-        .expect("Failed to execute request")
+            .post(&format!("{}/subscriptions", &self.address))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request")
+    }
+
+    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        reqwest::Client::new()
+            .post(&format!("{}/newsletters", &self.address))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
+            .json(&body)
+            .send()
+            .await
+            .expect("Failed to execute the request")
     }
 
     /// Extract the confirmation links embedded in the request to the email API.
@@ -44,20 +54,54 @@ impl TestApp {
             let raw_link = links[0].as_str().to_owned();
             let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
             assert_eq!(confirmation_link.host_str().unwrap(), "127.0.0.1");
-            confirmation_link.set_port(Some(self.port)).unwrap();   
+            confirmation_link.set_port(Some(self.port)).unwrap();
             confirmation_link
         };
         let html = get_link(&body["HtmlBody"].as_str().unwrap());
         let plain_text = get_link(&body["TextBody"].as_str().unwrap());
-        ConfirmationLinks {
-            html,
-            plain_text
-        }
-
+        ConfirmationLinks { html, plain_text }
     }
 }
 //----------------------------------------------------------------
-static TRACING: Lazy<()> = Lazy::new( || {
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+    pub async fn store(&self, db_pool: &PgPool) {
+        let salt = SaltString::generate(&mut rand::thread_rng());
+        let password_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(15000, 2, 1, None).unwrap(),
+        )
+        .hash_password(self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+    
+        sqlx::query!(
+            "INSERT INTO users (user_id, username, password_hash)
+            VALUES ($1,$2,$3)",
+            self.user_id,
+            self.username,
+            password_hash
+        )
+        .execute(db_pool)
+        .await
+        .expect("Failed to store test user");
+    }
+}
+//----------------------------------------------------------------
+static TRACING: Lazy<()> = Lazy::new(|| {
     let default_filter_level = "info".to_string();
     let subscriber_name = "test".to_string();
     if std::env::var("TEST_LOG").is_ok() {
@@ -92,21 +136,21 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Failed to build application");
     let application_port = application.port();
-
-    let address = format!("http://127.0.0.1:{}", application.port());
     // Launch the application as a background task
-
     let _ = tokio::spawn(application.run_until_stopped());
-    TestApp {
-        address,
+    let test_app = TestApp {
+        address: format!("http://127.0.0.1:{}", application_port),
         db_pool: get_connection_pool(&configuration.database),
         email_server,
-        port: application_port
-    }
+        port: application_port,
+        test_user: TestUser::generate(),
+    };
+    test_app.test_user.store(&test_app.db_pool).await;
+    test_app
 }
 
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
-    let mut connection = PgConnection::connect_with(&config.without_db()) 
+    let mut connection = PgConnection::connect_with(&config.without_db())
         .await
         .expect("Failed to connect to Postgres");
     connection
