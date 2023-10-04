@@ -1,6 +1,6 @@
 use actix_web::http::header::ContentType;
 use actix_web::HttpResponse;
-use actix_web_flash_messages::{IncomingFlashMessages};
+use actix_web_flash_messages::IncomingFlashMessages;
 use std::fmt::Write;
 //----------------------------------------------------------------
 #[derive(serde::Deserialize)]
