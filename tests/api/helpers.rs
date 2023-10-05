@@ -7,6 +7,20 @@ use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
+
+// Ensure that the `tracing` stack is only initialised once using `once_cell`
+//----------------------------------------------------------------
+static TRACING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".to_string();
+    let subscriber_name = "test".to_string();
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        init_subscriber(subscriber);
+    }
+});
 //----------------------------------------------------------------
 pub struct TestApp {
     pub address: String,
@@ -96,19 +110,35 @@ impl TestApp {
             .expect("Failed to execute request")
     }
 
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+    pub async fn get_publish_newsletter(&self) -> reqwest::Response {
         self.api_client
-            .post(&format!("{}/newsletters", &self.address))
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(&body)
+            .get(&format!("{}/admin/newsletters", &self.address))
             .send()
             .await
-            .expect("Failed to execute the request")
+            .expect("Failed to execute request")
+            
+    }
+    pub async fn get_publish_newsletter_html(&self) -> String {
+        self.get_publish_newsletter().await.text().await.unwrap()
+            
     }
 
+    pub async fn post_publish_newsletter<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/admin/newsletters", &self.address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
     /// Extract the confirmation links embedded in the request to the email API.
     pub fn get_confirmation_link(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
+
+        // Extract the link from one of the request fields.
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()
                 .links(s)
@@ -128,7 +158,7 @@ impl TestApp {
 }
 //----------------------------------------------------------------
 pub struct TestUser {
-    pub user_id: Uuid,
+    user_id: Uuid,
     pub username: String,
     pub password: String,
 }
@@ -141,8 +171,16 @@ impl TestUser {
             password: Uuid::new_v4().to_string(),
         }
     }
+    pub async fn login(&self, test_app: &TestApp) {
+        test_app.post_login(&serde_json::json!({
+            "username": &self.username,
+            "password": &self.password
+        }))
+        .await;
+    }
     pub async fn store(&self, db_pool: &PgPool) {
         let salt = SaltString::generate(&mut rand::thread_rng());
+        // Match production parameters
         let password_hash = Argon2::new(
             Algorithm::Argon2id,
             Version::V0x13,
@@ -151,7 +189,7 @@ impl TestUser {
         .hash_password(self.password.as_bytes(), &salt)
         .unwrap()
         .to_string();
-        dbg!(&password_hash);
+    
         sqlx::query!(
             "INSERT INTO users (user_id, username, password_hash)
             VALUES ($1,$2,$3)",
@@ -164,18 +202,6 @@ impl TestUser {
         .expect("Failed to store test user");
     }
 }
-//----------------------------------------------------------------
-static TRACING: Lazy<()> = Lazy::new(|| {
-    let default_filter_level = "info".to_string();
-    let subscriber_name = "test".to_string();
-    if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
-        init_subscriber(subscriber);
-    } else {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
-        init_subscriber(subscriber);
-    }
-});
 
 pub async fn spawn_app() -> TestApp {
     // The first time `initialize` is invoked the code in `TRACING` is executed.
@@ -211,7 +237,9 @@ pub async fn spawn_app() -> TestApp {
 
     let test_app = TestApp {
         address: format!("http://127.0.0.1:{}", application_port),
-        db_pool: get_connection_pool(&configuration.database),
+        db_pool: get_connection_pool(&configuration.database)
+            .await
+            .expect("Failed to connect to the database"),
         email_server,
         port: application_port,
         test_user: TestUser::generate(),
@@ -222,6 +250,7 @@ pub async fn spawn_app() -> TestApp {
 }
 
 async fn configure_database(config: &DatabaseSettings) -> PgPool {
+    // Create database
     let mut connection = PgConnection::connect_with(&config.without_db())
         .await
         .expect("Failed to connect to Postgres");
@@ -229,6 +258,8 @@ async fn configure_database(config: &DatabaseSettings) -> PgPool {
         .execute(&*format!(r#"CREATE DATABASE "{}";"#, config.database_name))
         .await
         .expect("Failed to create database.");
+
+    // Migrate database
     let connection_pool = PgPool::connect_with(config.with_db())
         .await
         .expect("Failed to connect to Postgres");

@@ -2,12 +2,6 @@ use actix_web::http::header::ContentType;
 use actix_web::HttpResponse;
 use actix_web_flash_messages::IncomingFlashMessages;
 use std::fmt::Write;
-//----------------------------------------------------------------
-#[derive(serde::Deserialize)]
-pub struct QueryParams {
-    pub error: String,
-    pub tag: String,
-}
 
 //----------------------------------------------------------------
 pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
@@ -30,7 +24,7 @@ pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
 </head>
 <body>
     {error_html}
-    <form action="login" method="POST">
+    <form action="/login" method="POST">
         <label>Username
             <input 
                 type="text"
@@ -48,7 +42,6 @@ pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
         <button type="submit">Login</button>
     </form>
 </body>
-</html>
-            "#,
+</html>"#,
         ))
 }

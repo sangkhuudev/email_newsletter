@@ -1,10 +1,11 @@
 use crate::authentication::reject_anonymous_users;
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::email_client::EmailClient;
-use crate::routes::{health_check, home, subscribe,
-    confirm, publish_newsletter,
+use crate::routes::{
+    health_check, home, subscribe,
+    confirm, publish_newsletter,publish_newsletter_form,
     login, login_form, log_out, admin_dashboard,
-    change_password, change_password_form
+    change_password, change_password_form,
 };
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer, cookie::Key};
@@ -27,7 +28,9 @@ pub struct Application {
 
 impl Application {
     pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
-        let connection_pool = get_connection_pool(&configuration.database);
+        let connection_pool = get_connection_pool(&configuration.database)
+            .await
+            .expect("Failed to connect to Postgres.");
         let timeout = configuration.email_client.timeout();
         // Build an `EmailClient` using `configuration`
         let sender_email = configuration
@@ -70,10 +73,10 @@ impl Application {
 }
 //----------------------------------------------------------------
 
-pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
+pub async fn get_connection_pool(configuration: &DatabaseSettings) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new()
-        .acquire_timeout(std::time::Duration::from_secs(2))
-        .connect_lazy_with(configuration.with_db())
+        .connect_with(configuration.with_db())
+        .await
 }
 //----------------------------------------------------------------
 // We need to define a wrapper type in order to retrieve the URL
@@ -113,6 +116,8 @@ pub async fn run(
                 web::scope("/admin")
                     .wrap(from_fn(reject_anonymous_users))
                     .route("/dashboard", web::get().to(admin_dashboard))
+                    .route("/newsletters", web::get().to(publish_newsletter_form))
+                    .route("/newsletters", web::post().to(publish_newsletter))
                     .route("/password", web::get().to(change_password_form))
                     .route("/password", web::post().to(change_password))
                     .route("/logout", web::post().to(log_out))
@@ -134,5 +139,5 @@ pub async fn run(
     Ok(server)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HmacSecret(pub Secret<String>);

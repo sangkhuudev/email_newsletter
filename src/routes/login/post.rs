@@ -10,8 +10,8 @@ use sqlx::PgPool;
 //----------------------------------------------------
 #[derive(serde::Deserialize)]
 pub struct FormData {
-    pub username: String,
-    pub password: Secret<String>,
+    username: String,
+    password: Secret<String>,
 }
 
 #[tracing::instrument(
