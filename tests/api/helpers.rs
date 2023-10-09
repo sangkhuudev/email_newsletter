@@ -3,6 +3,8 @@ use argon2::{Algorithm, Argon2, Params, PasswordHasher, Version};
 use email_newsletter::configuration::{get_configuration, DatabaseSettings};
 use email_newsletter::startup::{get_connection_pool, Application};
 use email_newsletter::telemetry::{get_subscriber, init_subscriber};
+use email_newsletter::email_client::EmailClient;
+use email_newsletter::issue_delivery_worker::{try_execute_task, ExecutionOutcome};
 use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
@@ -29,6 +31,7 @@ pub struct TestApp {
     pub port: u16,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
+    pub email_client: EmailClient,
 }
 
 pub struct ConfirmationLinks {
@@ -37,6 +40,17 @@ pub struct ConfirmationLinks {
 }
 
 impl TestApp {
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue = 
+                try_execute_task(&self.db_pool, &self.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }        
+        }
+    }
     pub async fn get_change_password(&self) -> reqwest::Response {
         self.api_client
             .get(&format!("{}/admin/password", &self.address))
@@ -244,6 +258,7 @@ pub async fn spawn_app() -> TestApp {
         port: application_port,
         test_user: TestUser::generate(),
         api_client: client,
+        email_client: configuration.email_client.client()
     };
     test_app.test_user.store(&test_app.db_pool).await;
     test_app

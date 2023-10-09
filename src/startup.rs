@@ -31,19 +31,20 @@ impl Application {
         let connection_pool = get_connection_pool(&configuration.database)
             .await
             .expect("Failed to connect to Postgres.");
-        let timeout = configuration.email_client.timeout();
-        // Build an `EmailClient` using `configuration`
-        let sender_email = configuration
-            .email_client
-            .sender()
-            .expect("Invalid sender email address");
-        let email_client = EmailClient::new(
-            configuration.email_client.base_url,
-            sender_email,
-            // Pass argument from configuration
-            configuration.email_client.auth_token,
-            timeout,
-        );
+        // let timeout = configuration.email_client.timeout();
+        // // Build an `EmailClient` using `configuration`
+        // let sender_email = configuration
+        //     .email_client
+        //     .sender()
+        //     .expect("Invalid sender email address");
+        // let email_client = EmailClient::new(
+        //     configuration.email_client.base_url,
+        //     sender_email,
+        //     // Pass argument from configuration
+        //     configuration.email_client.auth_token,
+        //     timeout,
+        // );
+        let email_client = configuration.email_client.client();
         let address = format!(
             "{}:{}",
             configuration.application.host, configuration.application.port
